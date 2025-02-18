@@ -87,19 +87,23 @@ int main(int argc, char *argv[])
     }
 
     printf("New termios structure set\n");
-
+    unsigned char UA[5]={0x7E, 0x03, 0x07, 0x04, 0x7E};
     // Loop for input
     unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
-
+    int i=0;
     while (STOP == FALSE)
     {
         // Returns after 5 chars have been input
-        int bytes = read(fd, buf, BUF_SIZE);
+        int bytes = read(fd, buf,1);
         buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
+        printf("var = 0x%02X\n", buf[i]);
+        if (buf[0]==0x03)
+            write (fd, UA,1);
 
-        printf(":%s:%d\n", buf, bytes);
-        if (buf[0] == 'z')
+  //    printf(":%s:%d\n", buf, bytes);
+        if (buf[0] == 0x01)
             STOP = TRUE;
+       
     }
 
     // The while() cycle should be changed in order to respect the specifications
