@@ -20,12 +20,13 @@
 #define TRUE 1
 
 #define BUF_SIZE 256
+#define BUF_SIZE 256
 
-#define FLAG 0x7E
-#define ADD_S 0x03 // frames sent by the Sender or answers from the Receiver
-#define ADD_R 0x01 // frames sent by the Receiver or answers from the Sender
-#define SET 0x03
-#define UA 0x07
+#define FLAG    0x7E
+#define ADD_S   0x03 // frames sent by the Sender or answers from the Receiver
+#define ADD_R   0x01 // frames sent by the Receiver or answers from the Sender
+#define SET     0x03
+#define UA      0x07
 
 volatile int STOP = FALSE;
 
@@ -99,32 +100,84 @@ int main(int argc, char *argv[])
     unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
     unsigned char frame[5];
 
-
+/*
     int bytes = read(fd, frame,5);
     if (bytes == 5) {
         printf("Received frame: ");
         for (int i = 0; i < 5; i++) printf("0x%02X ", frame[i]);
         printf("\n");
     }
-    int i=0;
 
     if (frame[2]==SET)
             write (fd, UA_frame,5); //Se detetar o SET manda o frame
+*/
+    char state=' ';
+    int i=0;
     while (STOP == FALSE)
     {
         // Returns after 5 chars have been input
-        int bytes = read(fd, buf,1);
+        switch (state)
+        {
+        case  'S':
+            printf("%c \n", state);
+            read(fd, buf,1);
+            printf("var = 0x%02X\n", buf[0]);
+            if (buf[0] == ADD_S){
+                state = 'A';
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+
+        case  'A':
+        printf("%c \n", state);
+            read(fd, buf,1);
+            printf("var = 0x%02X\n", buf[0]);
+            if (buf[0] == SET){
+                state = 'B';
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+
+        case  'B':
+        printf("%c \n", state);
+            read(fd, buf,1);
+            printf("var = 0x%02X\n", buf[0]);
+            if (buf[0] == (ADD_S ^ SET)){
+                state = 'C';
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+
+        case  'C':
+        printf("%c \n", state);
+            read(fd, buf,1);
+            printf("var = 0x%02X\n", buf[0]);
+            if (buf[0] == FLAG){
+                state = ' ';
+                STOP = TRUE;
+                write (fd, UA_frame,5); //mandar UA frame
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+        
+        default:
+        printf("start \n");
+            read(fd, buf,1);
+            printf("var = 0x%02X\n", buf[0]);
+            if (buf[0] == FLAG)
+                state = 'S';
+            
+            break;
+        }
+    }
+/*
         buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
         printf("var = 0x%02X\n", buf[i]);
-        if (buf[0]==SET)
-            write (fd, UA_frame,5); //Se detetar o SET manda o frame
-
-  //    printf(":%s:%d\n", buf, bytes);
-        if (buf[0] == 0x01)
+        if (buf[0] == 'z')
             STOP = TRUE;
        
     }
-
+*/
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
 
