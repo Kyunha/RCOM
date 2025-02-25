@@ -29,8 +29,7 @@
 
 volatile int STOP = FALSE;
 
-// Frame de sincronização
-unsigned char sync_frame[5] = {FLAG, ADD_R, UA, (ADD_R ^ UA), FLAG};
+
 
 int main(int argc, char *argv[])
 {
@@ -96,18 +95,29 @@ int main(int argc, char *argv[])
     }
 
     printf("New termios structure set\n");
-    unsigned char UA[5]={0x7E, 0x03, 0x07, 0x04, 0x7E};
     // Loop for input
+    unsigned char UA_frame[5] = {FLAG, ADD_S, UA, (ADD_S ^ UA), FLAG};
     unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
+    unsigned char frame[5];
+
+
+    int bytes = read(fd, frame,5);
+    if (bytes == 5) {
+        printf("Received frame: ");
+        for (int i = 0; i < 5; i++) printf("0x%02X ", frame[i]);
+        printf("\n");
     int i=0;
+
+    if (frame[2]==SET)
+            write (fd, UA_frame,5); //Se detetar o SET manda o frame
     while (STOP == FALSE)
     {
         // Returns after 5 chars have been input
         int bytes = read(fd, buf,1);
         buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
         printf("var = 0x%02X\n", buf[i]);
-        if (buf[0]==0x03)
-            write (fd, UA,1);
+        if (buf[0]==SET)
+            write (fd, UA_frame,5); //Se detetar o SET manda o frame
 
   //    printf(":%s:%d\n", buf, bytes);
         if (buf[0] == 0x01)

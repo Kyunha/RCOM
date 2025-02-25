@@ -21,9 +21,13 @@
 
 #define BUF_SIZE 5
 
-#define SET 0x03
-#define ADDRESS 0x03
 #define FLAG 0x7E
+#define ADD_S 0x03 // frames sent by the Sender or answers from the Receiver
+#define ADD_R 0x01 // frames sent by the Receiver or answers from the Sender
+#define SET 0x03
+#define UA 0x07
+
+unsigned char SET_frame[5] = {FLAG, ADD_S, SET, (ADD_S ^ SET), FLAG};
 
 volatile int STOP = FALSE;
 
@@ -95,7 +99,7 @@ int main(int argc, char *argv[])
 
     // Create string to send
     unsigned char buf[BUF_SIZE] = {0};
-    unsigned char SET_frame[5] = {FLAG, ADDRESS, SET, 0x00, FLAG}; 
+    unsigned char SET_frame[5] = {FLAG, ADD_S, SET, (ADD_S ^ SET), FLAG};
 
     /*    
     for (int i = 0; i < BUF_SIZE; i++)
