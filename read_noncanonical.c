@@ -96,21 +96,13 @@ int main(int argc, char *argv[])
 
     printf("New termios structure set\n");
     // Loop for input
+    //Declarar frames
     unsigned char UA_frame[5] = {FLAG, ADD_S, UA, (ADD_S ^ UA), FLAG};
     unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
     unsigned char frame[5];
 
-/*
-    int bytes = read(fd, frame,5);
-    if (bytes == 5) {
-        printf("Received frame: ");
-        for (int i = 0; i < 5; i++) printf("0x%02X ", frame[i]);
-        printf("\n");
-    }
 
-    if (frame[2]==SET)
-            write (fd, UA_frame,5); //Se detetar o SET manda o frame
-*/
+    //Maquina de estados
     char state=' ';
     int i=0;
     while (STOP == FALSE)
@@ -170,14 +162,7 @@ int main(int argc, char *argv[])
             break;
         }
     }
-/*
-        buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
-        printf("var = 0x%02X\n", buf[i]);
-        if (buf[0] == 'z')
-            STOP = TRUE;
-       
-    }
-*/
+    
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
 
