@@ -57,7 +57,6 @@ int main(int argc, char *argv[])
 
     struct termios oldtio;
     struct termios newtio;
-
     // Save current port settings
     if (tcgetattr(fd, &oldtio) == -1)
     {
@@ -106,6 +105,7 @@ int main(int argc, char *argv[])
         printf("Received frame: ");
         for (int i = 0; i < 5; i++) printf("0x%02X ", frame[i]);
         printf("\n");
+    }
     int i=0;
 
     if (frame[2]==SET)
