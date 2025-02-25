@@ -21,7 +21,16 @@
 
 #define BUF_SIZE 256
 
+#define FLAG 0x7E
+#define ADD_S 0x03 // frames sent by the Sender or answers from the Receiver
+#define ADD_R 0x01 // frames sent by the Receiver or answers from the Sender
+#define SET 0x03
+#define UA 0x07
+
 volatile int STOP = FALSE;
+
+// Frame de sincronização
+unsigned char sync_frame[5] = {FLAG, ADD_R, UA, (ADD_R ^ UA), FLAG};
 
 int main(int argc, char *argv[])
 {
