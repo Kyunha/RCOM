@@ -1,7 +1,7 @@
 // Write to serial port in non-canonical mode
 //
 // Modified by: Eduardo Nuno Almeida [enalmeida@fe.up.pt]
-
+#include <signal.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,12 +27,20 @@
 #define SET 0x03
 #define UA 0x07
 
-unsigned char SET_frame[5] = {FLAG, ADD_S, SET, (ADD_S ^ SET), FLAG};
+ void alarmHandler(int signal)           // User-defined function to handle alarms (handler function)
+    {                                       // This function will be called when the alarm is triggered
+    alarmEnabled = FALSE;                   // Can be used to change a flag that increases the number of alarms
+    alarmCount++;
+    printf("Alarm #%d\n", alarmCount);
+    }
 
 volatile int STOP = FALSE;
 
 int main(int argc, char *argv[])
 {
+    (void) signal(SIGALRM, alarmHandler);// Install the function signal to be automatically
+     // invoked when the timer expires, invoking in its turn
+       // the user function alarmHandler
     // Program usage: Uses either COM1 or COM2
     const char *serialPortName = argv[1];
 
@@ -45,6 +53,7 @@ int main(int argc, char *argv[])
                argv[0]);
         exit(1);
     }
+   
 
     // Open serial port device for reading and writing, and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
@@ -99,7 +108,9 @@ int main(int argc, char *argv[])
 
     // Create string to send
     unsigned char buf[BUF_SIZE] = {0};
-    unsigned char SET_frame[5] = {FLAG, ADD_S, SET, (ADD_S ^ SET), FLAG};
+    unsigned char SET_frame[5] = {FLAG, ADD_S, SET, 0x7E, FLAG};
+    
+    
 
     /*    
     for (int i = 0; i < BUF_SIZE; i++)
@@ -112,8 +123,8 @@ int main(int argc, char *argv[])
     // In non-canonical mode, '\n' does not end the writing.
     // Test this condition by placing a '\n' in the middle of the buffer.
     // The whole buffer must be sent even with the '\n'.
-    //buf[5] = '\n';
-
+    //buf[5] = '\n'
+    
     int bytes = write(fd, SET_frame, 5);
     printf("%d bytes written\n", bytes);
     sleep(1);
@@ -125,7 +136,8 @@ int main(int argc, char *argv[])
         printf("var = 0x%02X\n",buf[0]); 
     }
     
-
+    alarm(3); // Enable alarm in t seconds
+    alarm(0); // Disable pending alarms, if any
     // Wait until all bytes have been written to the serial port
 
 
