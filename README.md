@@ -1,1 +1,5 @@
-Repositório para RCOM 2025
+
+# Redes de Computadores
+
+Repositório para a cadeira RCOM.
+
