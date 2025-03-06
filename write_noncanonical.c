@@ -26,11 +26,12 @@
 #define ADD_R 0x01 // frames sent by the Receiver or answers from the Sender
 #define SET 0x03
 #define UA 0x07
+int RETRANSMIT = TRUE;
 
- void alarmHandler(int signal)           // User-defined function to handle alarms (handler function)
+void alarmHandler(int signal)          // User-defined function to handle alarms (handler function)
     {                                       // This function will be called when the alarm is triggered
-    int bytes = write(fd, SET_frame, 5);
-    printf("%d bytes written\n", bytes);
+    RETRANSMIT=TRUE;
+    printf("ALARM \n");
     sleep(1);
     }
 
@@ -117,30 +118,27 @@ int main(int argc, char *argv[])
     // The whole buffer must be sent even with the '\n'.
     //buf[5] = '\n'
     
-    int bytes = write(fd, SET_frame, 5);
-    printf("%d bytes written\n", bytes);
-    sleep(1);
-
-    while (STOP==FALSE)
-    {
-        read(fd,buf,1);
-        
-        printf("var = 0x%02X\n",buf[0]); 
-    }
-
     //Maquina de estados
     char state=' ';
     int i=0;
     alarm(1); // Enable alarm in t seconds
     while (STOP == FALSE)
     {
-        // Returns after 5 chars have been input
+        // Retransmitir
+
+        if (RETRANSMIT==TRUE){
+            int bytes = write(fd, SET_frame, 5);
+            printf("%d bytes written\n", bytes);
+            sleep(1);
+            RETRANSMIT = FALSE;
+
+        }
+        read(fd,buf,1);
+        printf("var = 0x%02X\n",buf[0]); 
         switch (state)
         {
         case  'S':
             printf("%c \n", state);
-            read(fd, buf,1);
-            printf("var = 0x%02X\n", buf[0]);
             if (buf[0] == ADD_S){
                 state = 'A';
             }else if (buf[0] == FLAG){ state ='S';
@@ -149,8 +147,6 @@ int main(int argc, char *argv[])
 
         case  'A':
         printf("%c \n", state);
-            read(fd, buf,1);
-            printf("var = 0x%02X\n", buf[0]);
             if (buf[0] == UA){
                 state = 'B';
             }else if (buf[0] == FLAG){ state ='S';
@@ -159,8 +155,6 @@ int main(int argc, char *argv[])
 
         case  'B':
         printf("%c \n", state);
-            read(fd, buf,1);
-            printf("var = 0x%02X\n", buf[0]);
             if (buf[0] == (ADD_S ^ UA)){
                 state = 'C';
             }else if (buf[0] == FLAG){ state ='S';
@@ -169,8 +163,6 @@ int main(int argc, char *argv[])
 
         case  'C':
         printf("%c \n", state);
-            read(fd, buf,1);
-            printf("var = 0x%02X\n", buf[0]);
             if (buf[0] == FLAG){
                 state = ' ';
                 STOP = TRUE;
@@ -181,8 +173,6 @@ int main(int argc, char *argv[])
         
         default:
         printf("start \n");
-            read(fd, buf,1);
-            printf("var = 0x%02X\n", buf[0]);
             if (buf[0] == FLAG)
                 state = 'S';
             

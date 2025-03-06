@@ -107,13 +107,13 @@ int main(int argc, char *argv[])
     int i=0;
     while (STOP == FALSE)
     {
+        read(fd, buf,1);
+        printf("var = 0x%02X\n", buf[0]);
         // Returns after 5 chars have been input
         switch (state)
         {
         case  'S':
             printf("%c \n", state);
-            read(fd, buf,1);
-            printf("var = 0x%02X\n", buf[0]);
             if (buf[0] == ADD_S){
                 state = 'A';
             }else if (buf[0] == FLAG){ state ='S';
@@ -122,8 +122,6 @@ int main(int argc, char *argv[])
 
         case  'A':
         printf("%c \n", state);
-            read(fd, buf,1);
-            printf("var = 0x%02X\n", buf[0]);
             if (buf[0] == SET){
                 state = 'B';
             }else if (buf[0] == FLAG){ state ='S';
@@ -132,8 +130,6 @@ int main(int argc, char *argv[])
 
         case  'B':
         printf("%c \n", state);
-            read(fd, buf,1);
-            printf("var = 0x%02X\n", buf[0]);
             if (buf[0] == (ADD_S ^ SET)){
                 state = 'C';
             }else if (buf[0] == FLAG){ state ='S';
@@ -142,8 +138,6 @@ int main(int argc, char *argv[])
 
         case  'C':
         printf("%c \n", state);
-            read(fd, buf,1);
-            printf("var = 0x%02X\n", buf[0]);
             if (buf[0] == FLAG){
                 state = ' ';
                 STOP = TRUE;
@@ -154,8 +148,6 @@ int main(int argc, char *argv[])
         
         default:
         printf("start \n");
-            read(fd, buf,1);
-            printf("var = 0x%02X\n", buf[0]);
             if (buf[0] == FLAG)
                 state = 'S';
             
