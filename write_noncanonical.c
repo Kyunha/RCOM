@@ -85,8 +85,8 @@ int main(int argc, char *argv[])
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 0.1;// Inter-character timer unused
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -109,7 +109,7 @@ int main(int argc, char *argv[])
 
     // Create string to send
     unsigned char buf[BUF_SIZE] = {0};
-    unsigned char SET_frame[5] = {FLAG, ADD_S, SET, 0x7E, FLAG};
+    unsigned char SET_frame[5] = {FLAG, ADD_S, SET, ADD_S^SET, FLAG};
     
     
     
@@ -121,19 +121,21 @@ int main(int argc, char *argv[])
     //Maquina de estados
     char state=' ';
     int i=0;
-    alarm(1); // Enable alarm in t seconds
+    //alarm(2); // Enable alarm in t seconds
     while (STOP == FALSE)
     {
         // Retransmitir
-
+      
         if (RETRANSMIT==TRUE){
             int bytes = write(fd, SET_frame, 5);
-            printf("%d bytes written\n", bytes);
+            alarm(3);
+            printf("%d MICHAEL JACKSON\n", bytes);
             sleep(1);
             RETRANSMIT = FALSE;
 
         }
-        read(fd,buf,1);
+        //read(fd,buf,1);
+        if(read(fd,buf,1) == 0){continue;}
         printf("var = 0x%02X\n",buf[0]); 
         switch (state)
         {
