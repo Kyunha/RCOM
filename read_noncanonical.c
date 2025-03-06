@@ -74,8 +74,8 @@ int main(int argc, char *argv[])
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 0.1; // Inter-character timer unused
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
     int i=0;
     while (STOP == FALSE)
     {
-        read(fd, buf,1);
+        if(read(fd, buf,1)==0){continue;};
         printf("var = 0x%02X\n", buf[0]);
         // Returns after 5 chars have been input
         switch (state)
