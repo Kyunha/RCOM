@@ -29,9 +29,9 @@
 
  void alarmHandler(int signal)           // User-defined function to handle alarms (handler function)
     {                                       // This function will be called when the alarm is triggered
-    alarmEnabled = FALSE;                   // Can be used to change a flag that increases the number of alarms
-    alarmCount++;
-    printf("Alarm #%d\n", alarmCount);
+    int bytes = write(fd, SET_frame, 5);
+    printf("%d bytes written\n", bytes);
+    sleep(1);
     }
 
 volatile int STOP = FALSE;
@@ -111,14 +111,6 @@ int main(int argc, char *argv[])
     unsigned char SET_frame[5] = {FLAG, ADD_S, SET, 0x7E, FLAG};
     
     
-
-    /*    
-    for (int i = 0; i < BUF_SIZE; i++)
-    {
-        buf[i] = 'a' + i % 26;
-    }
-    */
-
     
     // In non-canonical mode, '\n' does not end the writing.
     // Test this condition by placing a '\n' in the middle of the buffer.
@@ -132,14 +124,72 @@ int main(int argc, char *argv[])
     while (STOP==FALSE)
     {
         read(fd,buf,1);
-
+        
         printf("var = 0x%02X\n",buf[0]); 
     }
-    
-    alarm(3); // Enable alarm in t seconds
-    alarm(0); // Disable pending alarms, if any
-    // Wait until all bytes have been written to the serial port
 
+    //Maquina de estados
+    char state=' ';
+    int i=0;
+    alarm(1); // Enable alarm in t seconds
+    while (STOP == FALSE)
+    {
+        // Returns after 5 chars have been input
+        switch (state)
+        {
+        case  'S':
+            printf("%c \n", state);
+            read(fd, buf,1);
+            printf("var = 0x%02X\n", buf[0]);
+            if (buf[0] == ADD_S){
+                state = 'A';
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+
+        case  'A':
+        printf("%c \n", state);
+            read(fd, buf,1);
+            printf("var = 0x%02X\n", buf[0]);
+            if (buf[0] == UA){
+                state = 'B';
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+
+        case  'B':
+        printf("%c \n", state);
+            read(fd, buf,1);
+            printf("var = 0x%02X\n", buf[0]);
+            if (buf[0] == (ADD_S ^ UA)){
+                state = 'C';
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+
+        case  'C':
+        printf("%c \n", state);
+            read(fd, buf,1);
+            printf("var = 0x%02X\n", buf[0]);
+            if (buf[0] == FLAG){
+                state = ' ';
+                STOP = TRUE;
+                alarm(0); //disable o alarme
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+        
+        default:
+        printf("start \n");
+            read(fd, buf,1);
+            printf("var = 0x%02X\n", buf[0]);
+            if (buf[0] == FLAG)
+                state = 'S';
+            
+            break;
+        }
+    }
+    
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
