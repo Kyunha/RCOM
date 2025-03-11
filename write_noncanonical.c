@@ -26,6 +26,18 @@
 #define ADD_R 0x01 // frames sent by the Receiver or answers from the Sender
 #define SET 0x03
 #define UA 0x07
+#define RR0 0x05
+#define RR1 0x85
+#define RRJ0 0x01
+#define RRJ1 0x81
+#define DISC 0x0B
+#define I0 0x00
+#define I1 0x40
+
+int i=0;
+
+int RR={0x05;0x85}
+
 int RETRANSMIT = TRUE;
 
 void alarmHandler(int signal)          // User-defined function to handle alarms (handler function)
@@ -129,7 +141,7 @@ int main(int argc, char *argv[])
         if (RETRANSMIT==TRUE){
             int bytes = write(fd, SET_frame, 5);
             alarm(3);
-            printf("%d MICHAEL JACKSON\n", bytes);
+            printf("%d Á espera\n", bytes);
             sleep(1);
             RETRANSMIT = FALSE;
 
@@ -182,6 +194,76 @@ int main(int argc, char *argv[])
         }
     }
     
+    
+ char state=' ';
+    int i=0;
+    i=!i
+    STOP=FALSE;
+    //alarm(2); // Enable alarm in t seconds
+    while (STOP == FALSE)
+    {
+        // Retransmitir
+      
+        /*if (RETRANSMIT==TRUE){
+            int bytes = write(fd, SET_frame, 5);
+            alarm(3);
+            printf("%d Á espera\n", bytes);
+            sleep(1);
+            RETRANSMIT = FALSE;
+
+        }*/
+        //read(fd,buf,1);
+        if(read(fd,buf,1) == 0){continue;}
+        printf("var = 0x%02X\n",buf[0]); 
+        switch (state)
+        {
+        case  'S':
+            printf("%c \n", state);
+            if (buf[0] == ADD_S){
+                state = 'A';
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+
+        case  'A':
+        printf("%c \n", state);
+            if (buf[0]== RR[i]){
+                state = 'B';
+            }else if (buf[0]==RR[!i]){
+                state= 'E'
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+
+        case  'B':
+        printf("%c \n", state);
+            if (buf[0] == (ADD_S ^ RR[i])){
+                state = 'C';
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+
+        case  'C':
+        printf("%c \n", state);
+            if (buf[0] == FLAG){
+                state = ' ';
+                STOP = TRUE;
+                i=!i;
+                alarm(0); //disable o alarme
+            }else if (buf[0] == FLAG){ state ='S';
+            }else state = 'E';
+            break;
+        
+        default:
+        printf("start \n");
+            if (buf[0] == FLAG)
+                state = 'S';
+            
+            break;
+        }
+    }
+    
+
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
