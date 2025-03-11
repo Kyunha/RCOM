@@ -27,6 +27,15 @@
 #define ADD_R   0x01 // frames sent by the Receiver or answers from the Sender
 #define SET     0x03
 #define UA      0x07
+#define RR0     0x05
+#define RR1     0x85
+#define REJ0    0x01
+#define REJ1    0x81
+#define DISC    0x0B
+#define I0      0x00
+#define I1      0x40
+
+int I[2]={0x00,0x40};
 
 volatile int STOP = FALSE;
 
@@ -98,6 +107,10 @@ int main(int argc, char *argv[])
     // Loop for input
     //Declarar frames
     unsigned char UA_frame[5] = {FLAG, ADD_S, UA, (ADD_S ^ UA), FLAG};
+    unsigned char RR0_frame[5] = {FLAG, ADD_S, RR0, (ADD_S ^ RR0), FLAG};
+    unsigned char RR1_frame[5] = {FLAG, ADD_S, RR1, (ADD_S ^ RR1), FLAG};
+    unsigned char REJ0_frame[5] = {FLAG, ADD_S, REJ0, (ADD_S ^ REJ0), FLAG};
+    unsigned char REJ1_frame[5] = {FLAG, ADD_S, REJ1, (ADD_S ^ REJ1), FLAG};
     unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
     unsigned char frame[5];
 
@@ -142,7 +155,7 @@ int main(int argc, char *argv[])
                 state = ' ';
                 STOP = TRUE;
                 write (fd, UA_frame,5); //mandar UA frame
-            }else if (buf[0] == FLAG){ state ='S';
+            }else if (buf[0] == buf[0] == FLAG){ state ='S';
             }else state = 'E';
             break;
         
@@ -152,6 +165,64 @@ int main(int argc, char *argv[])
                 state = 'S';
             
             break;
+        }
+    }
+
+    
+    int S=0;
+    i = 0;
+    STOP=FALSE;
+    while (STOP == FALSE)
+    {
+        if(read(fd, buf,1)==0){continue;};
+        printf("var = 0x%02X\n", buf[0]);
+        // Returns after 5 chars have been input
+        switch (S)
+        {
+        default:
+        printf("start \n");
+            if (buf[0] == FLAG)
+                S++;
+            break;
+        case  1:
+            printf("%d \n", S);
+            if (buf[0] == ADD_S){
+                S++;
+            }else if (buf[0] == FLAG){ break;
+            }else S=0;
+            break;
+        case  2:
+            printf("%d \n", S);
+            if (buf[0] == I[i]){
+                S++;
+            }else if (buf[0] == FLAG){ S=1;
+            }else S=0;
+            break;
+        case  3:
+            printf("%d \n", S);
+            if (buf[0] == ADD_S^I[i]){
+                S++;
+            }else if (buf[0] == FLAG){ S=1;
+            }else S=0;
+            break;
+        case  4:
+            printf("%d \n", S);
+            if (buf[0] == FLAG){
+                S++;
+            }else if (buf[0] == FLAG){ S=1;
+            }else
+            break;
+        case  5:
+            printf("Acabou");
+            STOP==TRUE;
+            i=!i;
+            if(i==0){
+                write (fd, RR0_frame,5);
+            }else{write (fd, RR1_frame,5);}
+            break;
+        
+
+        
         }
     }
     
