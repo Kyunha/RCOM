@@ -20,7 +20,6 @@
 #define TRUE 1
 
 #define BUF_SIZE 256
-#define BUF_SIZE 256
 
 #define FLAG    0x7E
 #define ADD_S   0x03 // frames sent by the Sender or answers from the Receiver
@@ -125,6 +124,13 @@ int main(int argc, char *argv[])
         // Returns after 5 chars have been input
         switch (state)
         {
+        default:
+        printf("start \n");
+            if (buf[0] == FLAG)
+                state = 'S';
+            
+            break;
+            
         case  'S':
             printf("%c \n", state);
             if (buf[0] == ADD_S){
@@ -154,27 +160,25 @@ int main(int argc, char *argv[])
             if (buf[0] == FLAG){
                 state = ' ';
                 STOP = TRUE;
-                write (fd, UA_frame,5); //mandar UA frame
-            }else if (buf[0] == buf[0] == FLAG){ state ='S';
+                
+            }else if (buf[0] == FLAG){ state ='S';
             }else state = 'E';
             break;
         
-        default:
-        printf("start \n");
-            if (buf[0] == FLAG)
-                state = 'S';
-            
-            break;
         }
     }
 
     
     int S=0;
     i = 0;
+    write (fd, UA_frame,5); //mandar UA frame
+    printf("Escrever UA \n");
+    unsigned char data[BUF_SIZE]={0};
     STOP=FALSE;
     while (STOP == FALSE)
     {
-        if(read(fd, buf,1)==0){continue;};
+        printf("entrou \n");
+        while(read(fd, buf,1)==0);
         printf("var = 0x%02X\n", buf[0]);
         // Returns after 5 chars have been input
         switch (S)
@@ -182,37 +186,53 @@ int main(int argc, char *argv[])
         default:
         printf("start \n");
             if (buf[0] == FLAG)
-                S++;
+                S=1;
             break;
-        case  1:
+        case -1: //erro, reenviar o ready to receive
+            if(i==0){
+                write (fd, RR0_frame,5);
+            }else{write (fd, RR1_frame,5);}
+            S++;
+            break;
+        case  1:    //Address
             printf("%d \n", S);
             if (buf[0] == ADD_S){
                 S++;
             }else if (buf[0] == FLAG){ break;
-            }else S=0;
+            }else S=-1;
             break;
-        case  2:
+        case  2:    //I 0 ou 1
             printf("%d \n", S);
             if (buf[0] == I[i]){
                 S++;
             }else if (buf[0] == FLAG){ S=1;
-            }else S=0;
+            }else S=-1;
             break;
-        case  3:
+        case  3:    //BCC1
             printf("%d \n", S);
             if (buf[0] == ADD_S^I[i]){
                 S++;
             }else if (buf[0] == FLAG){ S=1;
-            }else S=0;
+            }else S=-1;
             break;
-        case  4:
+        case  4:    //Receber data
+            int i = 0;
+            while (buf[0]!=FLAG)
+            {
+                data[i] = buf[0];
+                i++;
+                while(read(fd, buf,1)==0);
+            }
+            printf("saiu \n");
+            break;
+        case  5:
             printf("%d \n", S);
             if (buf[0] == FLAG){
                 S++;
             }else if (buf[0] == FLAG){ S=1;
-            }else
+            }else S=-1;
             break;
-        case  5:
+        case  6:
             printf("Acabou");
             STOP==TRUE;
             i=!i;
@@ -221,14 +241,12 @@ int main(int argc, char *argv[])
             }else{write (fd, RR1_frame,5);}
             break;
         
-
-        
         }
     }
     
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
-
+    sleep(10);
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
     {
