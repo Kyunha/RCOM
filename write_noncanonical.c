@@ -36,7 +36,7 @@
 
 int i=0;
 
-int RR={0x05;0x85}
+int RR[]={0x05,0x85};
 
 int RETRANSMIT = TRUE;
 
@@ -97,7 +97,7 @@ int main(int argc, char *argv[])
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0.1;// Inter-character timer unused
+    newtio.c_cc[VTIME] = 0;// Inter-character timer unused
     newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
     // Create string to send
     unsigned char buf[BUF_SIZE] = {0};
     unsigned char SET_frame[5] = {FLAG, ADD_S, SET, ADD_S^SET, FLAG};
-    
+    unsigned char test[5] = {FLAG, ADD_S, I0, ADD_S^I0, FLAG};
     
     
     // In non-canonical mode, '\n' does not end the writing.
@@ -181,7 +181,7 @@ int main(int argc, char *argv[])
                 state = ' ';
                 STOP = TRUE;
                 alarm(0); //disable o alarme
-            }else if (buf[0] == FLAG){ state ='S';
+                write(fd,test,5);
             }else state = 'E';
             break;
         
@@ -195,24 +195,14 @@ int main(int argc, char *argv[])
     }
     
     
- char state=' ';
-    int i=0;
-    i=!i
+    state=' ';
+    i=0;
+    i=!i;
     STOP=FALSE;
     //alarm(2); // Enable alarm in t seconds
     while (STOP == FALSE)
     {
-        // Retransmitir
-      
-        /*if (RETRANSMIT==TRUE){
-            int bytes = write(fd, SET_frame, 5);
-            alarm(3);
-            printf("%d Á espera\n", bytes);
-            sleep(1);
-            RETRANSMIT = FALSE;
-
-        }*/
-        //read(fd,buf,1);
+        
         if(read(fd,buf,1) == 0){continue;}
         printf("var = 0x%02X\n",buf[0]); 
         switch (state)
@@ -221,6 +211,7 @@ int main(int argc, char *argv[])
             printf("%c \n", state);
             if (buf[0] == ADD_S){
                 state = 'A';
+                printf("rroz");
             }else if (buf[0] == FLAG){ state ='S';
             }else state = 'E';
             break;
@@ -230,7 +221,7 @@ int main(int argc, char *argv[])
             if (buf[0]== RR[i]){
                 state = 'B';
             }else if (buf[0]==RR[!i]){
-                state= 'E'
+                state= 'E';
             }else if (buf[0] == FLAG){ state ='S';
             }else state = 'E';
             break;
@@ -239,6 +230,8 @@ int main(int argc, char *argv[])
         printf("%c \n", state);
             if (buf[0] == (ADD_S ^ RR[i])){
                 state = 'C';
+            }else if (buf[0]==RR[!i]){
+                state= 'E';
             }else if (buf[0] == FLAG){ state ='S';
             }else state = 'E';
             break;
@@ -246,11 +239,12 @@ int main(int argc, char *argv[])
         case  'C':
         printf("%c \n", state);
             if (buf[0] == FLAG){
+                printf("oooo");
                 state = ' ';
+                write(fd,test,5);
                 STOP = TRUE;
                 i=!i;
-                alarm(0); //disable o alarme
-            }else if (buf[0] == FLAG){ state ='S';
+          
             }else state = 'E';
             break;
         
