@@ -147,16 +147,18 @@ int llopen(const char *port) {
 // **Função llwrite() - Mantendo tua máquina de estados**
 int llwrite(unsigned char *data, size_t length, int seqNum) {
     unsigned char stuffed_data[2 * BUF_SIZE];  // Buffer com espaço extra para stuffing
-    int stuffed_length = 0;
+    int stuffed_length = length;
 
     // **Aplicar Byte Stuffing apenas para FLAG (0x7E)**
     for (size_t i = 0; i < length; i++) {
         if (data[i] == FLAG) {
             stuffed_data[i++] = 0x7D;  // Escape byte
             stuffed_data[i] = 0x5E;  // FLAG transformada
-            length++;
+            stuffed_length++;
+        } else if (data[i] == 0x5E) {
+            stuffed_data[i] = 0x5D;
         } else {
-            stuffed_data[stuffed_length++] = data[i];
+            stuffed_data[i] = data[i];
         }
     }
 
@@ -209,8 +211,7 @@ int llwrite(unsigned char *data, size_t length, int seqNum) {
                     }   
                     break;
             }
-        }
-        
+        }    
     }
 
 return 1;
@@ -221,63 +222,63 @@ int llclose() {
     unsigned char DISC_frame[5] = {FLAG, ADD_S, DISC, ADD_S ^ DISC, FLAG};
     write(fd, DISC_frame, 5);
     printf("DISC enviado\n");
+    enum { START, ADDRESS, CONTROL, BCC1, END} state = START; //declarar estados
 
     STOP = FALSE;
     unsigned char buf[BUF_SIZE] = {0};
-    char state = ' ';
-
-    while (STOP == FALSE) {
-        if (read(fd, buf, 1) > 0) {
-            printf("var = 0x%02X\n", buf[0]);
-            switch (state)
-            {
-            case 'S':
-                printf("%c \n", state);
-                if (buf[0] == ADD_S)
-                    state = 'A';
-                else if (buf[0] == FLAG)
-                    state = 'S';
-                else
-                    state = 'E';
-                break;
-            case 'A':
-                printf("%c \n", state);
-                if (buf[0] == UA)
-                    state = 'B';
-                else if (buf[0] == FLAG)
-                    state = 'S';
-                else
-                    state = 'E';
-                break;
-            case 'B':
-                printf("%c \n", state);
-                if (buf[0] == (ADD_S ^ UA))
-                    state = 'C';
-                else if (buf[0] == FLAG)
-                    state = 'S';
-                else
-                    state = 'E';
-                break;
-            case 'C':
-                printf("%c \n", state);
-                if (buf[0] == FLAG)
-                {
-                    STOP = TRUE;
-                    printf("UA recebido!\n");
-                }
-                else
-                    state = 'E';
-                break;
-            default:
-                printf("start \n");
-                if (buf[0] == FLAG)
-                    state = 'S';
-                break;
+    int i=0;
+    while (STOP == FALSE)
+    {
+        if(read(fd, buf,1)==0){continue;};
+        printf("var = 0x%02X\n", buf[0]);
+        // Returns after 5 chars have been input
+        switch (state)
+        {
+        default:
+        state = START;
+        break; //n deve entrar aqui
+        case  START:
+            printf("%c \n", state);
+            if (buf[0] == FLAG){
+                state = ADDRESS;  
             }
+            break;
+
+        case  ADDRESS:
+        printf("%c \n", state);
+            if (buf[0] == ADD_S){
+                state = CONTROL;
+            }else if (buf[0] == FLAG){ state = ADDRESS;
+            }else state = START;
+            break;
+
+        case  CONTROL:
+        printf("%c \n", state);
+            if (buf[0] == (DISC)){
+                state = BCC1;
+            }else if (buf[0] == FLAG){ state =ADDRESS;
+            }else state = START;
+            break;
+
+        case  BCC1:
+        printf("%c \n", state);
+            if (buf[0] == (ADD_S ^ DISC)){
+                state = END;
+            }else if (buf[0] == FLAG){ state =ADDRESS;
+            }else state = START;
+            break;
+
+        case  END:
+        printf("%c \n", state);
+            if (buf[0] == FLAG){
+                STOP=TRUE;
+            }else state = START;
+            break;
+        
         }
     }
-
-    printf("UA recebido! Conexão encerrada.\n");
+  
+    printf("DISC recebido! Conexão encerrada.\n");
     close(fd);
     return 0;
 }
