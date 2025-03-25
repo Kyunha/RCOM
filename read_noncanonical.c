@@ -34,10 +34,133 @@
 #define I0      0x00
 #define I1      0x40
 
+//Declarar frames
+unsigned char UA_frame[5] = {FLAG, ADD_S, UA, (ADD_S ^ UA), FLAG};
+unsigned char RR0_frame[5] = {FLAG, ADD_S, RR0, (ADD_S ^ RR0), FLAG};
+unsigned char RR1_frame[5] = {FLAG, ADD_S, RR1, (ADD_S ^ RR1), FLAG};
+unsigned char REJ0_frame[5] = {FLAG, ADD_S, REJ0, (ADD_S ^ REJ0), FLAG};
+unsigned char REJ1_frame[5] = {FLAG, ADD_S, REJ1, (ADD_S ^ REJ1), FLAG};
+unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
+unsigned char frame[5];
+
 int I[2]={0x00,0x40};
 
 volatile int STOP = FALSE;
 
+void infoFrameRead(int fd) {
+    enum { START, ADDRESS, CONTROL, BCC1, DATA, ACK } state = START; //decalrar estados
+    int data_count = 0;
+    unsigned char data[BUF_SIZE] = {0};
+    unsigned char buf[1];
+    unsigned char infoField = 0;
+    int stop = 0;
+    
+    while (!stop) {
+        // Bloqueia
+        while(read(fd, buf, 1) <= 0){}//esperar até ter dados no buffer
+        printf("buf[0]: 0x%02X, State: %d\n", buf[0], state);
+        switch (state) {
+            case START:
+                if (buf[0] == FLAG) {
+                    // Got the starting flag, move on to reading the address
+                    state = ADDRESS;
+                }
+                // else, still waiting for a FLAG
+                break;
+                
+            case ADDRESS:
+                if (buf[0] == FLAG) {
+                    // FLAG repetiu
+                    state = ADDRESS;
+                } else if (buf[0] == ADD_S) {
+                    state = CONTROL;
+                } else {
+                    // Address n reconhecido
+                    state = START;
+                }
+                break;
+                
+            case CONTROL:
+                if (buf[0] == FLAG) {
+                    // flag, repetir address
+                    state = ADDRESS;
+                } else if (buf[0] == I0 || buf[0] == I1) {
+                    infoField = buf[0];  // guardar que I foi recebida
+                    state = BCC1;
+                } else {
+                    // I errado
+                    state = START;
+                }
+                break;
+                
+            case BCC1: {
+                if (buf[0] == ADD_S ^ infoField) {
+                    // Recebeu BCC1 correto
+                    state = DATA;
+                    data_count = 0;  // data_count a zero
+                } else if (buf[0] == FLAG) {
+                    // flag lol
+                    state = ADDRESS;
+                } else {
+                    // Error no BCC1 mandar negative acknoledgement
+                    write(fd, (infoField == I0 ? RR0_frame : RR1_frame), 5);
+                    state = START;
+                }
+                break;
+            }
+                
+            case DATA:
+                if (buf[0] == FLAG) { // caso receber FLAG final
+                    if (data_count <= 1) {
+                        // Não tem data recomeça
+                        state = START;
+                    } else {
+                        unsigned char BCC2 = 0;
+                        BCC2 = data[0];
+                        for (int j = 1; j < data_count - 1; j++) { // Calcular BCC2 enviado
+                            BCC2 ^= data[j];
+                        }
+                        
+                        if (BCC2 == data[data_count]) { //Verificar BCC2 
+                            state = ACK;
+                        } else {
+                            // BCC2 erro -> negative acknowledgement.
+                            write(fd, (infoField == I0 ? REJ0_frame : REJ1_frame), 5);
+                            state = START;
+                        }
+                    }
+                } 
+                else { //Nao tem flag -> ler data
+                    if (data_count < BUF_SIZE) { //apanhar possivel overflow
+                        data[data_count] = buf[0];
+                        data_count++;
+                    } else {
+                        // Overflow
+                        printf("overflow\n");
+                        state = START;
+                    }
+                }
+                break;
+                
+            case ACK:
+                printf("Dados recebidos.\n Bytes de dados: %d\n", data_count - 1);
+                // positive ack
+                write(fd, (infoField == I0 ? RR1_frame : RR0_frame), 5);
+                
+                // Reset state machine for the next frame.
+                state = START;
+                data_count = 0;
+                // Optionally, break out of the loop if only one frame is expected:
+                // stop = 1;
+                break;
+                
+            default:
+                // Should not reach here.
+                state = START;
+                break;
+        } // end switch
+    } // end while
+}
 
 
 int main(int argc, char *argv[])
@@ -104,14 +227,6 @@ int main(int argc, char *argv[])
 
     printf("New termios structure set\n");
     // Loop for input
-    //Declarar frames
-    unsigned char UA_frame[5] = {FLAG, ADD_S, UA, (ADD_S ^ UA), FLAG};
-    unsigned char RR0_frame[5] = {FLAG, ADD_S, RR0, (ADD_S ^ RR0), FLAG};
-    unsigned char RR1_frame[5] = {FLAG, ADD_S, RR1, (ADD_S ^ RR1), FLAG};
-    unsigned char REJ0_frame[5] = {FLAG, ADD_S, REJ0, (ADD_S ^ REJ0), FLAG};
-    unsigned char REJ1_frame[5] = {FLAG, ADD_S, REJ1, (ADD_S ^ REJ1), FLAG};
-    unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
-    unsigned char frame[5];
 
 
     //Maquina de estados
@@ -160,7 +275,7 @@ int main(int argc, char *argv[])
             if (buf[0] == FLAG){
                 state = ' ';
                 STOP = TRUE;
-                
+                write (fd, UA_frame,5); //mandar UA frame
             }else if (buf[0] == FLAG){ state ='S';
             }else state = 'E';
             break;
@@ -168,81 +283,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    
-    int S=0;
-    i = 0;
-    write (fd, UA_frame,5); //mandar UA frame
-    printf("Escrever UA \n");
-    unsigned char data[BUF_SIZE]={0};
-    STOP=FALSE;
-    while (STOP == FALSE)
-    {
-        printf("entrou \n");
-        while(read(fd, buf,1)==0);
-        printf("var = 0x%02X\n", buf[0]);
-        // Returns after 5 chars have been input
-        switch (S)
-        {
-        default:
-        printf("start \n");
-            if (buf[0] == FLAG)
-                S=1;
-            break;
-        case -1: //erro, reenviar o ready to receive
-            if(i==0){
-                write (fd, RR0_frame,5);
-            }else{write (fd, RR1_frame,5);}
-            S++;
-            break;
-        case  1:    //Address
-            printf("%d \n", S);
-            if (buf[0] == ADD_S){
-                S++;
-            }else if (buf[0] == FLAG){ break;
-            }else S=-1;
-            break;
-        case  2:    //I 0 ou 1
-            printf("%d \n", S);
-            if (buf[0] == I[i]){
-                S++;
-            }else if (buf[0] == FLAG){ S=1;
-            }else S=-1;
-            break;
-        case  3:    //BCC1
-            printf("%d \n", S);
-            if (buf[0] == ADD_S^I[i]){
-                S++;
-            }else if (buf[0] == FLAG){ S=1;
-            }else S=-1;
-            break;
-        case  4:    //Receber data
-            int i = 0;
-            while (buf[0]!=FLAG)
-            {
-                data[i] = buf[0];
-                i++;
-                while(read(fd, buf,1)==0);
-            }
-            printf("saiu \n");
-            break;
-        case  5:
-            printf("%d \n", S);
-            if (buf[0] == FLAG){
-                S++;
-            }else if (buf[0] == FLAG){ S=1;
-            }else S=-1;
-            break;
-        case  6:
-            printf("Acabou");
-            STOP==TRUE;
-            i=!i;
-            if(i==0){
-                write (fd, RR0_frame,5);
-            }else{write (fd, RR1_frame,5);}
-            break;
-        
-        }
-    }
     
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
