@@ -1,6 +1,3 @@
-// Write to serial port in non-canonical mode
-//
-// Modified by: Eduardo Nuno Almeida [enalmeida@fe.up.pt]
 #include <signal.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -11,262 +8,309 @@
 #include <termios.h>
 #include <unistd.h>
 
-// Baudrate settings are defined in <asm/termbits.h>, which is
-// included by <termios.h>
 #define BAUDRATE B38400
-#define _POSIX_SOURCE 1 // POSIX compliant source
+#define _POSIX_SOURCE 1
 
 #define FALSE 0
 #define TRUE 1
 
-#define BUF_SIZE 5
+#define BUF_SIZE 65536
 
 #define FLAG 0x7E
-#define ADD_S 0x03 // frames sent by the Sender or answers from the Receiver
-#define ADD_R 0x01 // frames sent by the Receiver or answers from the Sender
+#define ADD_S 0x03
+#define ADD_R 0x01
 #define SET 0x03
 #define UA 0x07
 #define RR0 0x05
 #define RR1 0x85
 #define RRJ0 0x01
 #define RRJ1 0x81
+#define REJ0 0x01
+#define REJ1 0x81
 #define DISC 0x0B
 #define I0 0x00
 #define I1 0x40
 
-int i=0;
-
-int RR[]={0x05,0x85};
-
-int RETRANSMIT = TRUE;
-
-void alarmHandler(int signal)          // User-defined function to handle alarms (handler function)
-    {                                       // This function will be called when the alarm is triggered
-    RETRANSMIT=TRUE;
-    printf("ALARM \n");
-    sleep(1);
-    }
-
+int RR[] = {RR0, RR1};
+int RRJ[] = {RRJ0, RRJ1};
+int REJ[] = {REJ0, REJ1};
+volatile int RETRANSMIT = TRUE;
 volatile int STOP = FALSE;
+int fd;
 
-int main(int argc, char *argv[])
-{
-    (void) signal(SIGALRM, alarmHandler);// Install the function signal to be automatically
-     // invoked when the timer expires, invoking in its turn
-       // the user function alarmHandler
-    // Program usage: Uses either COM1 or COM2
-    const char *serialPortName = argv[1];
+void alarmHandler(int signal) {
+    RETRANSMIT = TRUE;
+    printf("ALARM: retransmitindo...\n");
+}
 
-    if (argc < 2)
-    {
-        printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS1\n",
-               argv[0],
-               argv[0]);
-        exit(1);
-    }
-   
-
-    // Open serial port device for reading and writing, and not as controlling tty
-    // because we don't want to get killed if linenoise sends CTRL-C.
-    int fd = open(serialPortName, O_RDWR | O_NOCTTY);
-
-    if (fd < 0)
-    {
-        perror(serialPortName);
-        exit(-1);
+// **Função llopen() - Mantendo tua máquina de estados original**
+int llopen(const char *port) {
+    struct termios oldtio, newtio;
+    fd = open(port, O_RDWR | O_NOCTTY);
+    if (fd < 0) {
+        perror(port);
+        return -1;
     }
 
-    struct termios oldtio;
-    struct termios newtio;
-
-    // Save current port settings
-    if (tcgetattr(fd, &oldtio) == -1)
-    {
+    if (tcgetattr(fd, &oldtio) == -1) {
         perror("tcgetattr");
-        exit(-1);
+        return -1;
     }
 
-    // Clear struct for new port settings
     memset(&newtio, 0, sizeof(newtio));
-
     newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag = 0;
-
-    // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0;// Inter-character timer unused
-    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 0;
+    newtio.c_cc[VMIN] = 0;
 
-    // VTIME e VMIN should be changed in order to protect with a
-    // timeout the reception of the following character(s)
-
-    // Now clean the line and activate the settings for the port
-    // tcflush() discards data written to the object referred to
-    // by fd but not transmitted, or data received but not read,
-    // depending on the value of queue_selector:
-    //   TCIFLUSH - flushes data received but not read.
     tcflush(fd, TCIOFLUSH);
-
-    // Set new port settings
-    if (tcsetattr(fd, TCSANOW, &newtio) == -1)
-    {
+    if (tcsetattr(fd, TCSANOW, &newtio) == -1) {
         perror("tcsetattr");
-        exit(-1);
+        return -1;
     }
 
-    printf("New termios structure set\n");
-
-    // Create string to send
+    unsigned char SET_frame[5] = {FLAG, ADD_S, SET, ADD_S ^ SET, FLAG};
     unsigned char buf[BUF_SIZE] = {0};
-    unsigned char SET_frame[5] = {FLAG, ADD_S, SET, ADD_S^SET, FLAG};
-    unsigned char test[5] = {FLAG, ADD_S, I0, ADD_S^I0, FLAG};
-    
-    
-    // In non-canonical mode, '\n' does not end the writing.
-    // Test this condition by placing a '\n' in the middle of the buffer.
-    // The whole buffer must be sent even with the '\n'.
-    //buf[5] = '\n'
-    
-    //Maquina de estados
-    char state=' ';
-    int i=0;
-    //alarm(2); // Enable alarm in t seconds
-    while (STOP == FALSE)
-    {
-        // Retransmitir
-      
-        if (RETRANSMIT==TRUE){
-            int bytes = write(fd, SET_frame, 5);
+    char state = ' ';
+    int attempts = 0;
+
+    while (STOP == FALSE && attempts < 3) {
+        if (RETRANSMIT == TRUE) {
+            write(fd, SET_frame, 5);
             alarm(3);
-            printf("%d Á espera\n", bytes);
-            sleep(1);
+            printf("SET enviado, à espera do UA...\n");
             RETRANSMIT = FALSE;
-
+            attempts++;
         }
-        //read(fd,buf,1);
-        if(read(fd,buf,1) == 0){continue;}
-        printf("var = 0x%02X\n",buf[0]); 
-        switch (state)
-        {
-        case  'S':
-            printf("%c \n", state);
-            if (buf[0] == ADD_S){
-                state = 'A';
-            }else if (buf[0] == FLAG){ state ='S';
-            }else state = 'E';
-            break;
-
-        case  'A':
-        printf("%c \n", state);
-            if (buf[0] == UA){
-                state = 'B';
-            }else if (buf[0] == FLAG){ state ='S';
-            }else state = 'E';
-            break;
-
-        case  'B':
-        printf("%c \n", state);
-            if (buf[0] == (ADD_S ^ UA)){
-                state = 'C';
-            }else if (buf[0] == FLAG){ state ='S';
-            }else state = 'E';
-            break;
-
-        case  'C':
-        printf("%c \n", state);
-            if (buf[0] == FLAG){
-                state = ' ';
-                STOP = TRUE;
-                alarm(0); //disable o alarme
-                write(fd,test,5);
-            }else state = 'E';
-            break;
-        
-        default:
-        printf("start \n");
-            if (buf[0] == FLAG)
-                state = 'S';
-            
-            break;
-        }
-    }
-    
-    
-    state=' ';
-    i=0;
-    i=!i;
-    STOP=FALSE;
-    //alarm(2); // Enable alarm in t seconds
-    while (STOP == FALSE)
-    {
-        
-        if(read(fd,buf,1) == 0){continue;}
-        printf("var = 0x%02X\n",buf[0]); 
-        switch (state)
-        {
-        case  'S':
-            printf("%c \n", state);
-            if (buf[0] == ADD_S){
-                state = 'A';
-                printf("rroz");
-            }else if (buf[0] == FLAG){ state ='S';
-            }else state = 'E';
-            break;
-
-        case  'A':
-        printf("%c \n", state);
-            if (buf[0]== RR[i]){
-                state = 'B';
-            }else if (buf[0]==RR[!i]){
-                state= 'E';
-            }else if (buf[0] == FLAG){ state ='S';
-            }else state = 'E';
-            break;
-
-        case  'B':
-        printf("%c \n", state);
-            if (buf[0] == (ADD_S ^ RR[i])){
-                state = 'C';
-            }else if (buf[0]==RR[!i]){
-                state= 'E';
-            }else if (buf[0] == FLAG){ state ='S';
-            }else state = 'E';
-            break;
-
-        case  'C':
-        printf("%c \n", state);
-            if (buf[0] == FLAG){
-                printf("oooo");
-                state = ' ';
-                write(fd,test,5);
-                STOP = TRUE;
-                i=!i;
-          
-            }else state = 'E';
-            break;
-        
-        default:
-        printf("start \n");
-            if (buf[0] == FLAG)
-                state = 'S';
-            
-            break;
+        if (read(fd, buf, 1) > 0) {
+            printf("var = 0x%02X\n", buf[0]);
+            switch (state)
+            {
+            case 'S':
+                printf("%c \n", state);
+                if (buf[0] == ADD_S)
+                    state = 'A';
+                else if (buf[0] == FLAG)
+                    state = 'S';
+                else
+                    state = 'E';
+                break;
+            case 'A':
+                printf("%c \n", state);
+                if (buf[0] == UA)
+                    state = 'B';
+                else if (buf[0] == FLAG)
+                    state = 'S';
+                else
+                    state = 'E';
+                break;
+            case 'B':
+                printf("%c \n", state);
+                if (buf[0] == (ADD_S ^ UA))
+                    state = 'C';
+                else if (buf[0] == FLAG)
+                    state = 'S';
+                else
+                    state = 'E';
+                break;
+            case 'C':
+                printf("%c \n", state);
+                if (buf[0] == FLAG)
+                {
+                    STOP = TRUE;
+                    alarm(0);
+                    printf("UA recebido\n");
+                }
+                else
+                    state = 'E';
+                break;
+            default:
+                printf("start \n");
+                if (buf[0] == FLAG)
+                    state = 'S';
+                break;
+            }
         }
     }
-    
 
-
-    // Restore the old port settings
-    if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
-    {
-        perror("tcsetattr");
-        exit(-1);
+    if (!STOP) {
+        printf("UA não recebido! \n");
+        close(fd);
+        return -1;
     }
 
+    return fd;
+}
+
+// **Função llwrite() - Mantendo tua máquina de estados**
+int llwrite(unsigned char *data, size_t length, int seqNum) {
+    unsigned char stuffed_data[2 * BUF_SIZE];  // Buffer com espaço extra para stuffing
+    int stuffed_length = 0;
+
+    // **Aplicar Byte Stuffing apenas para FLAG (0x7E)**
+    for (size_t i = 0; i < length; i++) {
+        if (data[i] == FLAG) {
+            stuffed_data[stuffed_length++] = 0x7D;  // Escape byte
+            stuffed_data[stuffed_length++] = 0x5E;  // FLAG transformada
+        } else {
+            stuffed_data[stuffed_length++] = data[i];
+        }
+    }
+
+    unsigned char data_frame[BUF_SIZE];
+    data_frame[0] = FLAG;
+    data_frame[1] = ADD_S;
+    data_frame[2] = seqNum == 0 ? I0 : I1;
+    data_frame[3] = data_frame[1] ^ data_frame[2];
+    memcpy(&data_frame[4], data, stuffed_length);
+    data_frame[4 + stuffed_length] = data[0];
+    for(int j=1; j< length; j++){
+        data_frame[4 + stuffed_length] ^= data[j];}
+    data_frame[6 + stuffed_length] = FLAG;
+    
+    int attempts = 0;
+    char state = ' ';
+    unsigned char buf[BUF_SIZE] = {0};
+    write(fd, data_frame, stuffed_length + 8);
+    while (STOP==FALSE) {
+        
+        printf("Quadro I%d enviado (%zu bytes)\n", seqNum, stuffed_length);
+        printf("\n");
+        sleep(1);  // Pequeno atraso para evitar leituras incompletas
+
+        if (read(fd, buf, 1) > 0) {
+            printf(".-..-.-.Recebido: 0x%02X\n", buf[0]);
+
+            switch (state) {
+                case 'S':
+                    if (buf[0] == ADD_S) state = 'Z';
+                    break;
+                case 'F':
+                    if (buf[0] == FLAG) state = 'S';
+                    break;
+                case 'Z':
+                    if (buf[0] == RR[seqNum]) {
+                        printf("Recebido RR: transmissão bem-sucedida!\n");
+                        return 0;  // Sucesso
+                    }
+                    else if (buf[0] == REJ[seqNum]) {
+                        printf("Recebido REJ: retransmitindo...\n");
+                        STOP=TRUE;
+                        state = 'S';  // Voltar ao início
+                    }
+                    else if (buf[0] == RRJ[seqNum]) {
+                        printf("Recebido RRJ: ajustando sequência...\n");
+                        seqNum = !seqNum;
+                        STOP=TRUE;
+                        return 0;  // Seguir para o próximo quadro
+                    }   
+                    break;
+            }
+        }
+        
+    }
+
+return 1;
+}
+
+// **Função llclose() - Mantendo tua máquina de estados**
+int llclose() {
+    unsigned char DISC_frame[5] = {FLAG, ADD_S, DISC, ADD_S ^ DISC, FLAG};
+    write(fd, DISC_frame, 5);
+    printf("DISC enviado\n");
+
+    STOP = FALSE;
+    unsigned char buf[BUF_SIZE] = {0};
+    char state = ' ';
+
+    while (STOP == FALSE) {
+        if (read(fd, buf, 1) > 0) {
+            printf("var = 0x%02X\n", buf[0]);
+            switch (state)
+            {
+            case 'S':
+                printf("%c \n", state);
+                if (buf[0] == ADD_S)
+                    state = 'A';
+                else if (buf[0] == FLAG)
+                    state = 'S';
+                else
+                    state = 'E';
+                break;
+            case 'A':
+                printf("%c \n", state);
+                if (buf[0] == UA)
+                    state = 'B';
+                else if (buf[0] == FLAG)
+                    state = 'S';
+                else
+                    state = 'E';
+                break;
+            case 'B':
+                printf("%c \n", state);
+                if (buf[0] == (ADD_S ^ UA))
+                    state = 'C';
+                else if (buf[0] == FLAG)
+                    state = 'S';
+                else
+                    state = 'E';
+                break;
+            case 'C':
+                printf("%c \n", state);
+                if (buf[0] == FLAG)
+                {
+                    STOP = TRUE;
+                    printf("UA recebido!\n");
+                }
+                else
+                    state = 'E';
+                break;
+            default:
+                printf("start \n");
+                if (buf[0] == FLAG)
+                    state = 'S';
+                break;
+            }
+        }
+    }
+
+    printf("UA recebido! Conexão encerrada.\n");
     close(fd);
+    return 0;
+}
 
+// **Camada de Aplicação - Envio do ficheiro**
+int main(int argc, char *argv[]) {
+    (void)signal(SIGALRM, alarmHandler);
+
+    if (argc < 3) {
+        printf("Uso: %s <PortaSerial> <Ficheiro>\n", argv[0]);
+        exit(1);
+    }
+
+    const char *port = argv[1];
+    const char *fileName = argv[2];
+
+    if (llopen(port) == -1) return -1;
+
+    FILE *file = fopen(fileName, "rb");
+    if (!file) {
+        perror("Erro ao abrir o ficheiro");
+        return -1;
+    }
+
+    int seqNum = 0;
+    size_t bytesRead;
+    unsigned char buf[BUF_SIZE];
+
+    while ((bytesRead = fread(buf, 1, BUF_SIZE - 6, file)) > 0) {
+        if (llwrite(buf, bytesRead, seqNum) == 1) break;
+        seqNum = !seqNum;
+    }
+
+    fclose(file);
+    llclose();
     return 0;
 }
