@@ -19,7 +19,7 @@
 #define FALSE 0
 #define TRUE 1
 
-#define BUF_SIZE 256
+#define BUF_SIZE 65536
 
 #define FLAG    0x7E
 #define ADD_S   0x03 // frames sent by the Sender or answers from the Receiver
@@ -40,7 +40,7 @@ unsigned char RR0_frame[5] = {FLAG, ADD_S, RR0, (ADD_S ^ RR0), FLAG};
 unsigned char RR1_frame[5] = {FLAG, ADD_S, RR1, (ADD_S ^ RR1), FLAG};
 unsigned char REJ0_frame[5] = {FLAG, ADD_S, REJ0, (ADD_S ^ REJ0), FLAG};
 unsigned char REJ1_frame[5] = {FLAG, ADD_S, REJ1, (ADD_S ^ REJ1), FLAG};
-unsigned char REJ1_frame[5] = {FLAG, ADD_S, DISC, (ADD_S ^ DISC), FLAG};
+unsigned char DISC_frame[5] = {FLAG, ADD_S, DISC, (ADD_S ^ DISC), FLAG};
 unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
 unsigned char frame[5];
 
@@ -48,8 +48,17 @@ int I[2]={0x00,0x40};
 
 volatile int STOP = FALSE;
 
-void infoFrameRead(int fd) {
-    enum { START, ADDRESS, CONTROL, BCC1, DATA, ACK, DISCONNECT } state = START; //decalrar estados
+int RETRANSMIT = TRUE;
+
+void alarmHandler(int signal)          // User-defined function to handle alarms (handler function)
+    {                                       // This function will be called when the alarm is triggered
+    RETRANSMIT=TRUE;
+    printf("ALARM \n");
+    sleep(1);
+    }
+
+void infoFrameRead(int fd, FILE *fptr) {
+    enum { START, ADDRESS, CONTROL, BCC1, DATA, ACK, DISCONNECT } state = START; //declarar estados
     int data_count = 0;
     unsigned char data[BUF_SIZE] = {0};
     unsigned char buf[1];
@@ -57,7 +66,7 @@ void infoFrameRead(int fd) {
     int stop = 0;
     
     while (!stop) {
-        // Bloqueia
+        int infoState = 0;
         while(read(fd, buf, 1) <= 0){}//esperar até ter dados no buffer
         printf("buf[0]: 0x%02X, State: %d\n", buf[0], state);
         switch (state) {
@@ -74,6 +83,7 @@ void infoFrameRead(int fd) {
                     // FLAG repetiu
                     state = ADDRESS;
                 } else if (buf[0] == ADD_S) {
+                    printf("Sucesso ADDRESS\n");
                     state = CONTROL;
                 } else {
                     // Address n reconhecido
@@ -85,9 +95,10 @@ void infoFrameRead(int fd) {
                 if (buf[0] == FLAG) {
                     // flag, repetir address
                     state = ADDRESS;
-                } else if (buf[0] == I0 || buf[0] == I1) {
+                } else if (buf[0] == I[infoState]) {
                     infoField = buf[0];  // guardar que I foi recebida
                     state = BCC1;
+                    printf("Sucesso Control\n");
                 } else if (buf[0] == DISC) {
                     state= DISCONNECT;
                 }
@@ -98,8 +109,9 @@ void infoFrameRead(int fd) {
                 break;
                 
             case BCC1: {
-                if (buf[0] == ADD_S ^ infoField) {
+                if (buf[0] == (ADD_S ^ I[infoState])) {
                     // Recebeu BCC1 correto
+                    printf("Sucesso BCC1\n");
                     state = DATA;
                     data_count = 0;  // data_count a zero
                 } else if (buf[0] == FLAG) {
@@ -107,7 +119,8 @@ void infoFrameRead(int fd) {
                     state = ADDRESS;
                 } else {
                     // Error no BCC1 mandar negative acknoledgement
-                    write(fd, (infoField == I0 ? RR0_frame : RR1_frame), 5);
+                    printf("BCC1 errado\n");
+                    write(fd, (infoField == I0 ? REJ0_frame : REJ1_frame), 5);
                     state = START;
                 }
                 break;
@@ -115,21 +128,32 @@ void infoFrameRead(int fd) {
                 
             case DATA:
                 if (buf[0] == FLAG) { // caso receber FLAG final
+                    printf("Fim de data\n");
                     if (data_count <= 1) {
                         // Não tem data recomeça
                         state = START;
                     } else {
                         unsigned char BCC2 = 0;
                         BCC2 = data[0];
-                        for (int j = 1; j < data_count - 1; j++) { // Calcular BCC2 enviado
+                        printf("Verificar BCC2\n");
+                        for (int j = 1; j <= (data_count - 1); j++) { // Calcular BCC2 enviado
                             BCC2 ^= data[j];
                         }
                         
                         if (BCC2 == data[data_count]) { //Verificar BCC2 
                             state = ACK;
+                            printf("Deu certo\n");
+                            for (size_t i = 0; i < data_count; i++) {
+                                fprintf(fptr, "%c", data[i]);
+                                printf("%c",data[i]);
+                            }
+                            
                         } else {
                             // BCC2 erro -> negative acknowledgement.
+                            printf("Deu ruim\n");
                             write(fd, (infoField == I0 ? REJ0_frame : REJ1_frame), 5);
+                            printf("%c",infoField);
+                            printf("---\n");
                             state = START;
                         }
                     }
@@ -149,14 +173,18 @@ void infoFrameRead(int fd) {
                 case ACK:
                 printf("Dados recebidos.\n Bytes de dados: %d\n", data_count - 1);
                 // positive ack
-                write(fd, (infoField == I0 ? RR1_frame : RR0_frame), 5);
-                
+                write(fd, (I[infoState] == I0 ? RR1_frame : RR0_frame), 5);
+                printf("mandar RR \n");
+                printf("---%c\n",I[infoState]);
+                printf("---\n");
+                infoState = !infoState;
                 // Reset da maquina de estados
                 state = START;
                 data_count = 0;
                 break;
 
                 case DISCONNECT:
+                printf("disconectar\n");
                 if (buf[0] == ADD_S ^ DISC) {
                     // Recebeu BCC1 correto
                     stop=TRUE;
@@ -224,7 +252,7 @@ int main(int argc, char *argv[])
     newtio.c_cc[VTIME] = 0.1; // Inter-character timer unused
     newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
-    // VTIME e VMIN should be changed in order to protect with a
+    // VTIME e VMIN should be changed iSomen order to protect with a
     // timeout the reception of the following character(s)
 
     // Now clean the line and activate the settings for the port
@@ -291,6 +319,7 @@ int main(int argc, char *argv[])
             if (buf[0] == FLAG){
                 state = ' ';
                 STOP = TRUE;
+                printf("mandei UA \n");
                 write (fd, UA_frame,5); //mandar UA frame
             }else if (buf[0] == FLAG){ state ='S';
             }else state = 'E';
@@ -299,7 +328,11 @@ int main(int argc, char *argv[])
         }
     }
 
+    FILE *fptr;
+    // Create a file
+    fptr = fopen("penguin.gif", "w");
     
+    infoFrameRead( fd, fptr); 
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
     sleep(10);
@@ -310,6 +343,7 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
+    fclose(fptr); 
     close(fd);
 
     return 0;
