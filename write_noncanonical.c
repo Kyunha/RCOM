@@ -152,7 +152,8 @@ int llwrite(unsigned char *data, size_t length, int seqNum) {
     // **Aplicar Byte Stuffing apenas para FLAG (0x7E)**
     for (size_t i = 0; i < length; i++) {
         if (data[i] == FLAG) {
-            stuffed_data[i++] = 0x7D;  // Escape byte
+            stuffed_data[i] = 0x7D; 
+            i++; // Escape byte
             stuffed_data[i] = 0x5E;  // FLAG transformada
             stuffed_length++;
         } else if (data[i] == 0x5E) {
