@@ -129,6 +129,7 @@ void infoFrameRead(int fd, FILE *fptr) {
             case DATA:
                 if (buf[0] == FLAG) { // caso receber FLAG final
                     printf("Fim de data\n");
+
                     if (data_count <= 1) {
                         // Não tem data recomeça
                         state = START;
@@ -143,9 +144,24 @@ void infoFrameRead(int fd, FILE *fptr) {
                         if (BCC2 == data[data_count]) { //Verificar BCC2 
                             state = ACK;
                             printf("Deu certo\n");
+                            
+                        //unstuff
+                        unsigned char unstuffed_data[2 * BUF_SIZE];  // Buffer com espaço extra para stuffing
+                        for (size_t i = 0; i < data_count; i++) {
+                            if ((data[i] == 0x7D) && (data[i+1] == 0x5E)) {
+                                unstuffed_data[i++] = 0x7E;  // Escape byte
+                                data_count--;
+                            }else if (data[i]==0x5D)
+                            {
+                                unstuffed_data[i]==0x5E;
+                            }else {
+                                unstuffed_data[i] = data[i];
+                            }
+                        }
+
                             for (size_t i = 0; i < data_count; i++) {
-                                fprintf(fptr, "%c", data[i]);
-                                printf("%c",data[i]);
+                                fprintf(fptr, "%c", unstuffed_data[i]);
+                                printf("%c",unstuffed_data[i]);
                             }
                             
                         } else {
@@ -175,8 +191,7 @@ void infoFrameRead(int fd, FILE *fptr) {
                 // positive ack
                 write(fd, (I[infoState] == I0 ? RR1_frame : RR0_frame), 5);
                 printf("mandar RR \n");
-                printf("---%c\n",I[infoState]);
-                printf("---\n");
+                printf("---%d\n",I[infoState]);
                 infoState = !infoState;
                 // Reset da maquina de estados
                 state = START;
@@ -188,6 +203,7 @@ void infoFrameRead(int fd, FILE *fptr) {
                 if (buf[0] == ADD_S ^ DISC) {
                     // Recebeu BCC1 correto
                     stop=TRUE;
+                    write(fd, DISC_frame, 5);
                 } else if (buf[0] == FLAG) {
                     // flag lol
                     state = ADDRESS;
