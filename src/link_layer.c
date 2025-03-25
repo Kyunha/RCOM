@@ -18,7 +18,7 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
-int llwrite(const unsigned char *buf, int bufSize)
+int llwrite(int fd, const unsigned char *buf, int bufSize)
 {
     // TODO
 

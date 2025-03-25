@@ -40,6 +40,7 @@ unsigned char RR0_frame[5] = {FLAG, ADD_S, RR0, (ADD_S ^ RR0), FLAG};
 unsigned char RR1_frame[5] = {FLAG, ADD_S, RR1, (ADD_S ^ RR1), FLAG};
 unsigned char REJ0_frame[5] = {FLAG, ADD_S, REJ0, (ADD_S ^ REJ0), FLAG};
 unsigned char REJ1_frame[5] = {FLAG, ADD_S, REJ1, (ADD_S ^ REJ1), FLAG};
+unsigned char REJ1_frame[5] = {FLAG, ADD_S, DISC, (ADD_S ^ DISC), FLAG};
 unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
 unsigned char frame[5];
 
@@ -48,7 +49,7 @@ int I[2]={0x00,0x40};
 volatile int STOP = FALSE;
 
 void infoFrameRead(int fd) {
-    enum { START, ADDRESS, CONTROL, BCC1, DATA, ACK } state = START; //decalrar estados
+    enum { START, ADDRESS, CONTROL, BCC1, DATA, ACK, DISCONNECT } state = START; //decalrar estados
     int data_count = 0;
     unsigned char data[BUF_SIZE] = {0};
     unsigned char buf[1];
@@ -62,10 +63,10 @@ void infoFrameRead(int fd) {
         switch (state) {
             case START:
                 if (buf[0] == FLAG) {
-                    // Got the starting flag, move on to reading the address
+                    // receba
                     state = ADDRESS;
                 }
-                // else, still waiting for a FLAG
+            
                 break;
                 
             case ADDRESS:
@@ -87,7 +88,10 @@ void infoFrameRead(int fd) {
                 } else if (buf[0] == I0 || buf[0] == I1) {
                     infoField = buf[0];  // guardar que I foi recebida
                     state = BCC1;
-                } else {
+                } else if (buf[0] == DISC) {
+                    state= DISCONNECT;
+                }
+                 else {
                     // I errado
                     state = START;
                 }
@@ -142,24 +146,36 @@ void infoFrameRead(int fd) {
                 }
                 break;
                 
-            case ACK:
+                case ACK:
                 printf("Dados recebidos.\n Bytes de dados: %d\n", data_count - 1);
                 // positive ack
                 write(fd, (infoField == I0 ? RR1_frame : RR0_frame), 5);
                 
-                // Reset state machine for the next frame.
+                // Reset da maquina de estados
                 state = START;
                 data_count = 0;
-                // Optionally, break out of the loop if only one frame is expected:
-                // stop = 1;
+                break;
+
+                case DISCONNECT:
+                if (buf[0] == ADD_S ^ DISC) {
+                    // Recebeu BCC1 correto
+                    stop=TRUE;
+                } else if (buf[0] == FLAG) {
+                    // flag lol
+                    state = ADDRESS;
+                } else {
+                    // Error no BCC1 
+                    //write(fd, (infoField == I0 ? RR0_frame : RR1_frame), 5);
+                    state = START;
+                }
                 break;
                 
             default:
-                // Should not reach here.
+                // Nao deve entrar neste estado
                 state = START;
                 break;
-        } // end switch
-    } // end while
+        } 
+    } 
 }
 
 
