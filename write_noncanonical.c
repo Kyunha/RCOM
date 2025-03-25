@@ -152,8 +152,9 @@ int llwrite(unsigned char *data, size_t length, int seqNum) {
     // **Aplicar Byte Stuffing apenas para FLAG (0x7E)**
     for (size_t i = 0; i < length; i++) {
         if (data[i] == FLAG) {
-            stuffed_data[stuffed_length++] = 0x7D;  // Escape byte
-            stuffed_data[stuffed_length++] = 0x5E;  // FLAG transformada
+            stuffed_data[i++] = 0x7D;  // Escape byte
+            stuffed_data[i] = 0x5E;  // FLAG transformada
+            length++;
         } else {
             stuffed_data[stuffed_length++] = data[i];
         }
@@ -164,10 +165,10 @@ int llwrite(unsigned char *data, size_t length, int seqNum) {
     data_frame[1] = ADD_S;
     data_frame[2] = seqNum == 0 ? I0 : I1;
     data_frame[3] = data_frame[1] ^ data_frame[2];
-    memcpy(&data_frame[4], data, stuffed_length);
-    data_frame[4 + stuffed_length] = data[0];
-    for(int j=1; j< length; j++){
-        data_frame[4 + stuffed_length] ^= data[j];}
+    memcpy(&data_frame[4], stuffed_data, stuffed_length);
+    data_frame[4 + stuffed_length] = stuffed_data[0];
+    for(int j=1; j< stuffed_length; j++){
+        data_frame[4 + stuffed_length] ^= stuffed_data[j];}
     data_frame[6 + stuffed_length] = FLAG;
     
     int attempts = 0;
