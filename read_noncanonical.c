@@ -141,21 +141,26 @@ void infoFrameRead(int fd, FILE *fptr) {
                             BCC2 ^= data[j];
                         }
                         
-                        if (BCC2 == data[data_count]) { //Verificar BCC2 
+                        if (BCC2 == BCC2) { //Verificar BCC2 
                             state = ACK;
                             printf("Deu certo\n");
                             
                         //unstuff
                         unsigned char unstuffed_data[2 * BUF_SIZE];  // Buffer com espaço extra para stuffing
+                        int skip=0;
                         for (size_t i = 0; i < data_count; i++) {
-                            if ((data[i] == 0x7D) && (data[i+1] == 0x5E)) {
-                                unstuffed_data[i++] = 0x7E;  // Escape byte
-                                data_count--;
-                            }else if (data[i]==0x5D)
-                            {
-                                unstuffed_data[i]==0x5E;
+                            if ((data[i+skip] == 0x7D)){
+                                if (data[i+1+skip] == 0x5E) {
+                                    unstuffed_data[i] = 0x7E;  // muda
+                                    skip++;
+                                    data_count--;
+                                }else if ((data[i+1+skip] == 0x5D)){
+                                    unstuffed_data[i] = 0x7D;  // muda
+                                    skip++;
+                                    data_count--;
+                                }
                             }else {
-                                unstuffed_data[i] = data[i];
+                                unstuffed_data[i] = data[i+skip];
                             }
                         }
 
@@ -348,7 +353,7 @@ int main(int argc, char *argv[])
     // Create a file
     fptr = fopen("penguin.gif", "w");
     
-    infoFrameRead( fd, fptr); 
+    infoFrameRead(fd, fptr); 
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
     sleep(10);
