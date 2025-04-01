@@ -14,7 +14,7 @@
 #define FALSE 0
 #define TRUE 1
 
-#define BUF_SIZE 65536
+#define BUF_SIZE 5000
 
 #define FLAG 0x7E
 #define ADD_S 0x03
@@ -146,76 +146,107 @@ int llopen(const char *port) {
 
 // **Função llwrite() - Mantendo tua máquina de estados**
 int llwrite(unsigned char *data, size_t length, int seqNum) {
-    unsigned char stuffed_data[2 * BUF_SIZE];  // Buffer com espaço extra para stuffing
-    int stuffed_length = length;
+     // Número de sequência inicial (I0 ou I1)
+     size_t bytes_sent = 0;
 
-    // **Aplicar Byte Stuffing apenas para FLAG (0x7E)**
-    for (size_t i = 0; i < length; i++) {
-        if (data[i] == FLAG) {
-            stuffed_data[i] = 0x7D; 
-            i++; // Escape byte
-            stuffed_data[i] = 0x5E;  // FLAG transformada
-            stuffed_length++;
-        } else if (data[i] == 0x5E) {
-            stuffed_data[i] = 0x5D;
-        } else {
-            stuffed_data[i] = data[i];
-        }
-    }
-
-    unsigned char data_frame[BUF_SIZE];
-    data_frame[0] = FLAG;
-    data_frame[1] = ADD_S;
-    data_frame[2] = seqNum == 0 ? I0 : I1;
-    data_frame[3] = data_frame[1] ^ data_frame[2];
-    memcpy(&data_frame[4], stuffed_data, stuffed_length);
-    data_frame[4 + stuffed_length] = stuffed_data[0];
-    for(int j=1; j< stuffed_length; j++){
-        data_frame[4 + stuffed_length] ^= stuffed_data[j];}
-    data_frame[6 + stuffed_length] = FLAG;
-    
-    int attempts = 0;
-    char state = ' ';
-    unsigned char buf[BUF_SIZE] = {0};
-    write(fd, data_frame, stuffed_length + 8);
-    while (STOP==FALSE) {
+    while (bytes_sent < length) {
+        // Determinar o tamanho do próximo bloco
+        size_t chunk_size = (length - bytes_sent) < BUF_SIZE ? (length - bytes_sent) : BUF_SIZE;
         
-        printf("Quadro I%d enviado (%zu bytes)\n", seqNum, stuffed_length);
-        printf("\n");
-        sleep(1);  // Pequeno atraso para evitar leituras incompletas
+        // Criar buffer de stuffing (o dobro do tamanho para segurança)
+        unsigned char stuffed_data[2 * BUF_SIZE];  
+        int j = 0;
 
-        if (read(fd, buf, 1) > 0) {
-            printf(".-..-.-.Recebido: 0x%02X\n", buf[0]);
+        // **1️⃣ Calcular BCC2 antes do Byte Stuffing**
+        unsigned char BCC2 = data[bytes_sent];
+        for (size_t i = 1; i < chunk_size; i++) {
+            BCC2 ^= data[bytes_sent + i];  // XOR de todos os bytes do bloco
+        }
 
-            switch (state) {
-                case 'S':
-                    if (buf[0] == ADD_S) state = 'Z';
-                    break;
-                case 'F':
-                    if (buf[0] == FLAG) state = 'S';
-                    break;
-                case 'Z':
-                    if (buf[0] == RR[seqNum]) {
-                        printf("Recebido RR: transmissão bem-sucedida!\n");
-                        return 0;  // Sucesso
-                    }
-                    else if (buf[0] == REJ[seqNum]) {
-                        printf("Recebido REJ: retransmitindo...\n");
-                        STOP=TRUE;
-                        state = 'S';  // Voltar ao início
-                    }
-                    else if (buf[0] == RRJ[seqNum]) {
-                        printf("Recebido RRJ: ajustando sequência...\n");
-                        seqNum = !seqNum;
-                        STOP=TRUE;
-                        return 0;  // Seguir para o próximo quadro
-                    }   
-                    break;
+        // **2️⃣ Aplicar Byte Stuffing aos dados**
+        for (size_t i = 0; i < chunk_size; i++) {
+            if (data[bytes_sent + i] == FLAG) {
+                stuffed_data[j++] = 0x7D;
+                stuffed_data[j++] = 0x5E;  // FLAG transformada
+            } else if (data[bytes_sent + i] == 0x7D) {
+                stuffed_data[j++] = 0x7D;
+                stuffed_data[j++] = 0x5D;  // Escape transformado
+            } else {
+                stuffed_data[j++] = data[bytes_sent + i];
             }
-        }    
+        }
+
+        // **3️⃣ Aplicar Byte Stuffing ao BCC2, se necessário**
+        if (BCC2 == FLAG) {
+            stuffed_data[j++] = 0x7D;
+            stuffed_data[j++] = 0x5E;
+        } else if (BCC2 == 0x7D) {
+            stuffed_data[j++] = 0x7D;
+            stuffed_data[j++] = 0x5D;
+        } else {
+            stuffed_data[j++] = BCC2;
+        }
+
+        int stuffed_length = j;  // Comprimento real dos dados com stuffing
+
+        // **4️⃣ Criar quadro de dados**
+        unsigned char data_frame[stuffed_length + 6];
+        data_frame[0] = FLAG;
+        data_frame[1] = ADD_S;
+        data_frame[2] = (seqNum == 0) ? I0 : I1;
+        data_frame[3] = data_frame[1] ^ data_frame[2];  // BCC1
+        memcpy(&data_frame[4], stuffed_data, stuffed_length);
+        data_frame[4 + stuffed_length] = FLAG;
+
+        // **5️⃣ Enviar quadro e esperar resposta**
+       
+        unsigned char buf[BUF_SIZE] = {0};
+        char state = 'S';
+		
+        while (TRUE) {
+            
+			write(fd, data_frame, stuffed_length + 5);
+        printf("Pacote %d enviado (%d bytes, incluindo stuffing): ", seqNum, stuffed_length + 	5);
+            for (int k = 0; k < stuffed_length + 5; k++)
+                printf("0x%02X ", data_frame[k]);
+            printf("\n");
+
+            sleep(1);  // Pequeno atraso para evitar leituras incompletas
+
+            if (read(fd, buf, 1) > 0) {
+                printf("Recebido: 0x%02X\n", buf[0]);
+
+                switch (state) {
+                    case 'S':
+                        if (buf[0] == ADD_S) state = 'Z';
+                        break;
+                    case 'Z':
+                        if (buf[0] == RR[seqNum]) {
+                            printf("Recebido RR: pacote %d transmitido com sucesso!\n", seqNum);
+                            bytes_sent += chunk_size;  // Avançar para o próximo bloco
+                            seqNum = !seqNum;  // Alternar entre I0 e I1
+                            goto next_packet;  // Seguir para o próximo pacote
+                        }
+                        else if (buf[0] == REJ[seqNum]) {
+                            printf("Recebido REJ: retransmitindo pacote %d...\n", seqNum);
+                            state = 'S';  // Voltar ao início e retransmitir
+                        }
+                        break;
+                }
+            }
+            
+        }
+
+        printf("Erro: número máximo de retransmissões atingido.\n");
+        return -1;
+
+    next_packet:
+        continue;
     }
 
-return 1;
+    printf("Transmissão completa!\n");
+    return 0;
+
 }
 
 // **Função llclose() - Mantendo tua máquina de estados**
