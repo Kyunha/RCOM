@@ -189,7 +189,7 @@ void infoFrameRead(int fd, FILE *fptr) {
                         state = START;
                     }
                 }
-                break;
+                //break;
                 
                 case ACK:
                 printf("Dados recebidos.\n Bytes de dados: %d\n", data_count - 1);
