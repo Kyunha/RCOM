@@ -43,6 +43,39 @@ void alarmHandler(int signal) {
     printf("ALARM: retransmitindo...\n");
 }
 
+void splitFile(const char* filename, size_t bufSize) {
+    FILE* inputFile = fopen(filename, "rb");
+    if (!inputFile) {
+        perror("Erro ao abrir ficheiro");
+        return;
+    }
+
+    unsigned char* buffer = malloc(bufSize);
+    if (!buffer) {
+        perror("Erro na alocação de memória");
+        fclose(inputFile);
+        return;
+    }
+
+    size_t chunkCounter = 0;
+    size_t bytesRead;
+
+    while ((bytesRead = fread(buffer, 1, bufSize, inputFile)) > 0) {
+        // Processar o buffer aqui (ex: escrever em ficheiros separados)
+        printf("Buffer %zu: %zu bytes\n", ++chunkCounter, bytesRead);
+
+    }
+
+    // Verificar erros
+    if (ferror(inputFile)) {
+        perror("Erro durante a leitura");
+    }
+
+    free(buffer);
+    fclose(inputFile);
+}
+
+
 // **Função llopen() - Mantendo tua máquina de estados original**
 int llopen(const char *port) {
     struct termios oldtio, newtio;
